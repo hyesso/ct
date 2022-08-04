@@ -1,0 +1,106 @@
+---
+author: "Hutom_da"
+date: "7/26/2022"
+output:
+  html_document:
+    toc: true
+    toc_float : true
+    toc_depth : 6
+---
+
+```{r setup, include=FALSE}
+#### scan landmark modeling
+
+## load packages ---------------------------------------------------------
+pkg_list<-c("readxl", "writexl", "dplyr", "scatterplot3d", "plotly", "rockchalk", "summarytools")
+pacman::p_load(pkg_list, install=TRUE, update=FALSE, character.only = TRUE)
+
+## read clinical data_ct(66cases ; 220722) -------------------------------
+raw_df <- as.data.frame(read_xlsx("/Users/jinhyesu/my_project/rawData/220511_ct/Hutom Data(Final).xlsx", sheet="Hutom_Dicom(Final)", range = "B2:T382"))
+colnames(raw_df)
+
+get_col <- c("PSM_No","SEX", "AGE", "Weight(수술당시)", "Height", "BMI(수술당시)", "출산 여부(여자)")
+cli_df <- raw_df[,which(colnames(raw_df) %in% get_col)] 
+colnames(cli_df) <- c("psm_no", "sex", "age", "weight", "height", "bmi", "childbirth") 
+
+cli_df$childbirth[cli_df$childbirth == "X" | cli_df$childbirth == "x"] <- "F"
+cli_df$childbirth[cli_df$childbirth == "O"| cli_df$childbirth == "o"] <- "T"
+cli_df$childbirth[cli_df$childbirth == "?"] <- NA
+
+# 66cases
+file_list <- list.files("/Users/jinhyesu/my_project/rawData/220511_ct/ct_data_file")
+case_no <- c()
+for(i in 1:length(file_list)){
+  case_no <- append(case_no, strsplit(file_list[i], split = "_")[[1]][1])
+}
+case_no <- as.numeric(case_no)
+
+
+## read distance data_ct(66cases ; 220726) -------------------------------
+dist_df <- as.data.frame(read_xlsx("/Users/jinhyesu/my_project/rawData/220511_ct/dist_landmark_66cases.xlsx", range = "B1:L1651"))
+dist_df$p_num <- rep(c(0:24), 66)
+
+case <- c()
+for(i in 1:length(dist_df$ann)){
+    ca <- strsplit(dist_df$ann[i], "_")[[1]][1]
+    case <- append(case, ca)
+  }
+dist_df$ann <- as.numeric(case)
+
+# matched 2 data frame ; left_join
+cli_matched <- cli_df[which(cli_df$psm_no %in% case_no),]
+df_fin <- left_join(dist_df, cli_matched, by=c("ann"= "psm_no"))
+
+str(df_fin)
+
+#view(dfSummary(cli_matched[, -1]))
+#view(cli_matched %>% group_by(sex)%>% dfSummary())
+
+#view(dfSummary(dist_df[,!(colnames(dist_df) %in% c("ann", "p_num"))]))
+
+summary_by_p <- stby(data      = select(dist_df, -c(ann,p_num)), 
+                               INDICES   = dist_df$p_num, 
+                               FUN       = descr,
+                               stats     = "common",
+                               transpose = TRUE)
+```
+
+### 개요
+ - 사용자료 ; 최종 검수 완료된 66개 활용
+ - 사용변수
+     - distance ; euclidean distance(before - transformed after)
+     - clinical ; gender, age, bmi, childbirth, weight, height 
+ - 수행내역 ; data 전처리 완료 ; case_number에 따른 distance, 임상변수 추출, merge
+ - 향후일정 
+     - 회귀분석을 기반으로 한 25개 점에 대한 회귀식 검토 
+     - fat, muscle data 활용방안 검토 및 전처리 시행
+
+### screening_220726 
+#### [total] clinical_data
+```{r, results='asis', message=FALSE,echo=FALSE,warning = FALSE}
+dfSummary(cli_matched[, -1], 
+          plain.ascii  = FALSE, 
+          style        = "grid", 
+          graph.magnif = 0.75, 
+          valid.col    = FALSE,
+          tmp.img.dir  = "/tmp")
+```
+
+#### [by_sex] clinical_data
+```{r, results='asis', message=FALSE,echo=FALSE,warning = FALSE}
+dfSummary(cli_matched %>% group_by(sex), 
+          plain.ascii  = FALSE, 
+          style        = "grid", 
+          graph.magnif = 0.75, 
+          valid.col    = FALSE,
+          tmp.img.dir  = "/tmp")
+```
+
+#### [total] distance_data
+```{r, results='asis', echo=FALSE}
+for( i in c(1:25)){
+  cat("\n\n#####", i, "th_point \n\n")
+  print(summary_by_p[[i]])
+  cat("\n\n")
+}
+```
